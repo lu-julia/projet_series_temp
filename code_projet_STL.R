@@ -47,7 +47,7 @@ indice.source <- zoo(data$Indice, order.by=dates)
 indice <- indice.source[1:(length(indice.source)-2)]
 dates2 <- dates[1:(length(dates)-2)]
 
-# On trace la série et on sauvegarde le graphique obtenu
+# On trace la série 
 png('./images/serie_initiale.png', width=600, height=450)
 plot(indice, xlab = "Dates", ylab = "Indice de production industrielle", main="Fabrication de pesticides et d'autres produits agrochimiques" , col="blue")
 dev.off()
@@ -104,8 +104,8 @@ adf
 
 # On doit considérer 18 lags pour que les résidus ne soient plus autocorrélés 
 # Le test ADF avec 18 lags est donc valide
-# La p-valeur de ce test est de 0.6971 > 0.05 
-# donc on ne rejette pas l'hypothèse nulle de non stationnarité (ie. la série n'est pas stationnaire)
+# pval=0.6971 > 0.05 donc on ne rejette pas l'hypothèse nulle de non stationnarité 
+# ie. la série initiale n'est pas stationnaire
 
 # On va donc considérer la série différenciée à l'ordre 1
 diff_indice <- diff(indice, 1)
@@ -121,7 +121,7 @@ adf_diff <- adfTest_valid(diff_indice, 24, "nc")
 adf_diff
 
 # Le test ADF avec 7 lags est valide
-# La p-valeur de ce test est 0.01 < 0.05 donc on rejette l'hypothèse de non stationnarité
+# pval=0.01 < 0.05 donc on rejette l'hypothèse de non stationnarité au seuil de 5%
 # Conclusion : la série différenciée est stationnaire
 
 
@@ -162,7 +162,7 @@ dev.off()
 qmax <- 2
 pmax <- 7
 
-# On calcule le AIC/BIC pour chaque combinaisons possibles de p<=pmax et q<=qmax
+# On calcule le AIC/BIC pour chaque combinaison possible de p<=pmax et q<=qmax
 pqs <- expand.grid(0:pmax,0:qmax) 
 mat <- matrix(NA, nrow=pmax+1, ncol=qmax+1)
 rownames(mat) <- paste0("p=",0:pmax) 
@@ -212,30 +212,51 @@ xtable(qtest_arima012)
 
 # Conclusion : le modèle ARMA(0,2) est bien ajusté et valide
 
-# On peut étudier les résidus de notre modèle avec la fonction checkresiduals 
+# On étudie également la normalité des résidus de notre modèle 
 png('./images/residus_arima012.png', width=800, height=600)
 checkresiduals(arima012)
 dev.off()
 
-# On représente graphiquement l'inverse des racines
-model <- Arima(indice, order=c(0,1,2))
-plot(model)
-#All the roots of our model are > 1
+# Diagramme Quantile-Quantile
+png('./images/qqplot_residus_arima012.png', width=600, height=450)
+qqnorm(arima012$residuals)
+qqline(arima012$residuals)
+dev.off()
 
+# Test de normalité de Shapiro Wilk (H0 : les résidus sont gaussiens)
+shapiro.test(arima012$residuals)
+# pval=0.0037 < 0.01 donc on rejette H0 
 
+# D'apprès le diagramme Q-Q et le test de Shapiro Wilk, l'hypothèse de normalité des résidus n'est pas vérifiée
+
+# Représentation graphique de la série initiale et sa modélisation
+png('./images/serie_initiale_et_modele012.png', width=600, height=450)
+plot(indice, xlab="Dates", col="grey")
+lines(fitted(arima012), col="red")
+legend("topleft", legend = c(expression(X[t]), "ARIMA(0,1,2)"), col = c("grey", "red"), lty = 1)
+dev.off()
 
 ########################
 # Partie 3 : Prévision
 ########################
 
-### Q6 - 
+# On suppose tout de même que nos résidus sont gaussiens
 
-#On prévoit les valeurs de la série différenciée
-#aux horizons T+1 et T+2 (janvier et février 2024), et les régions de confiance à 95% associées
+# On estime l'écart-type de nos résidus
+sigma <- sd(arima012$residuals)
+sigma # sigma=8.6
+
+# On prédit les valeurs de la série aux horizons T+1 et T+2 (janvier et février 2024) et les régions de confiance à 95% associées
 forecast <- forecast(arima012, h=2, level=0.95)
 
-plot(forecast, shadecols = "grey", fcol="red", xlim=c(2018,2024), main = "intervalles de confiance (alpha = 0.95) pour T+1 à T+2")
+# On représente les prédictions avec leur intervalle de confiance à 95% et la série initiale
+# On limite la série à partir de l'année 2020 pour plus de lisibilité
+png('./images/predictions_arima012.png', width=600, height=450)
+plot(forecast, fcol="red", xlim=c(2020,2024+1/12), main="Prédictions et intervalles de confiance à 95% pour T+1 et T+2")
+lines(x=c(2024, 2024+1/12), y=forecast$mean, col="red", lwd=2)
 par(new=T)
-plot(indice.source, type="l", lwd=1, col="blue", xlim=c(2018,2024))
+plot(indice.source, xlim=c(2020,2024+1/12), xlab="Dates", ylab=expression(X[t]))
 dev.off()
+
+# Les points rouges correspondent prédictions et les zones en gris clair représentent les intervalles de confiance à 95%
 
