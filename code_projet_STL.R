@@ -12,7 +12,7 @@ library(zoo)
 library(tseries)
 library(forecast)
 library(fUnitRoots)
-library(stargazer)
+library(ellipse)
 library(xtable)
 
 
@@ -20,20 +20,15 @@ library(xtable)
 # Partie 1 : Les données
 ##########################
 
-### Q1 - Présentation de la série
+## Q1 - Présentation de la série
 
 # Importation des données et renommage des colonnes
-# Lien : https://www.insee.fr/fr/statistiques/serie/010767804
 data <- read.csv("valeurs_mensuelles_pesticides.csv", sep=";", col.names = c('Dates', 'Indice', 'Codes'))
 
 # On enlève les 3 premières lignes qui ne sont pas des données et on enlève la troisième colonne qui n'est pas utile
 data <- data[-(1:3), 1:2]
-
-# On réinitialise l'index du DataFrame
-rownames(data) <- NULL
-
-# On convertit les valeurs de la colonne 'Indice' en données numériques
-data$Indice <- as.numeric(data$Indice)
+rownames(data) <- NULL #on réinitialise l'index du DataFrame
+data$Indice <- as.numeric(data$Indice) #on convertit les valeurs de la colonne 'Indice' en données numériques
 
 # On définit les dates de la série
 data$Dates[1] #première date : janvier 1990
@@ -48,18 +43,16 @@ indice <- indice.source[1:(length(indice.source)-2)]
 dates2 <- dates[1:(length(dates)-2)]
 
 # On trace la série 
-png('./images/serie_initiale.png', width=600, height=450)
 plot(indice, xlab = "Dates", ylab = "Indice de production industrielle", main="Fabrication de pesticides et d'autres produits agrochimiques" , col="blue")
-dev.off()
 
 
-### Q2 - Transformation de la série
+## Q2 - Transformation de la série
 
-# On régresse les valeurs de la série sur les dates et une constante pour vérifier si la série présente une tendance 
+# On régresse les valeurs de la série sur les dates pour vérifier si la série présente une tendance 
 reg <- lm(indice ~ dates2)
 summary(reg)
 
-# La régression linéaire met en évidence une tendance croissante pour la série (coefficient significativement positif) et une constante significativement non nulle
+# La régression linéaire met en évidence une tendance a priori croissante pour la série (le coefficient associé aux dates est significativement positif) 
 
 # On effectue le test de racine unitaire ADF dans le cas avec constante et tendance pour déterminer si la série est stationnaire ou non
 # L'hypothèse nulle est la non stationnarité (présence de racine unitaire)
@@ -67,9 +60,9 @@ adf <- adfTest(indice, lag=0, type="ct")
 adf
 
 # Cependant, on ne peut pas interpréter ce test car on ne sait pas s'il est valide
-# Pour que le test soit valide, il faut que les résidus de la régression soient décorrélés
+# Pour que le test soit valide, il faut que les résidus de la régression soient non autocorrélés
 
-# On teste donc l’autocorrélation des résidus dans la régression .
+# On teste donc l’autocorrélation des résidus dans la régression
 
 Qtests <- function(series, k, fitdf=0) {
   pvals <- apply(matrix(1:k), 1, FUN=function(l) {
@@ -106,6 +99,7 @@ adf
 # Le test ADF avec 18 lags est donc valide
 # pval=0.6971 > 0.05 donc on ne rejette pas l'hypothèse nulle de non stationnarité 
 # ie. la série initiale n'est pas stationnaire
+# donc la série est au moins I(1)
 
 # On va donc considérer la série différenciée à l'ordre 1
 diff_indice <- diff(indice, 1)
@@ -116,7 +110,7 @@ summary(reg_diff)
 
 # Il n'y a pas de tendance ni de constante significatives (p-valeur > 0.05)
 
-# On effectue le test ADF dans le cas "nc" (sans canstante et sans tendance) en contrôlant pour l'absence d'autocorrélation entre les résidus
+# On effectue le test ADF dans le cas "nc" (sans constante et sans tendance) en contrôlant pour l'absence d'autocorrélation entre les résidus
 adf_diff <- adfTest_valid(diff_indice, 24, "nc")
 adf_diff
 
@@ -125,36 +119,31 @@ adf_diff
 # Conclusion : la série différenciée est stationnaire
 
 
-### Q3 - Représentation graphique avant et après transformation
+## Q3 - Représentation graphique avant et après transformation
 
-png('./images/serie_avant_apres.png', width=600, height=450)
 plot(cbind(indice, diff_indice), xlab = "Dates", main="Série avant et après différenciation", col="blue")
-dev.off()
+
 
 
 ##########################
 # Partie 2 : Modèles ARMA
 ##########################
 
-### Q4 - Choix du modèle ARMA(p,q) pour la série différenciée
+## Q4 - Choix du modèle ARMA(p,q) pour la série différenciée
 
 # On détermine d'abord qmax et pmax grâce à l'acf et la pacf
 
-# On trace l'autocorrélogramme de la série différenciée
-png('./images/acf.png', width=600, height=450)
+# On trace l'autocorrélogramme de la série différenciée (on regarde les autocorrélations jusqu'à deux ans de retard)
 acf(diff_indice, main="Autocorrélogramme")
-dev.off()
 
-# L'ACF ne présente plus de pics significativement différents de zéro au delà de 2 retards (en comptant à partir du lag 0)
+# L'ACF ne présente plus de pics significativement différents de zéro au delà de 2 retards 
 # On fait le choix d'ignorer les éventuels pics significatifs pour des retards supérieurs à 10
 # On a donc qmax=2
 
-# On trace l'autocorrélogramme partiel de la série différenciée
-png('./images/pacf.png', width=600, height=450)
+# On trace l'autocorrélogramme partiel de la série différenciée (on regarde les autocorrélations jusqu'à deux ans de retard)
 pacf(diff_indice, main="Autocorrélogramme partiel")
-dev.off()
 
-# La PACF ne présente plus de pics significatifs au delà de 7 retards (en comptant à partir du lag 1)
+# La PACF ne présente plus de pics significatifs au delà de 7 retards
 # On fait le choix d'ignorer les éventuels pics significatifs pour des retards supérieurs à 10
 # On a donc pmax=7
 
@@ -181,16 +170,16 @@ AICs
 AICs==min(AICs)
 xtable(AICs) #pour obtenir la table Latex
 
-# Le modèle ARMA(0,2) minimise le critère AIC donc on garde ce modèle
+# Le modèle ARMA(0,2) = MA(2) minimise le critère AIC donc on garde ce modèle
 arima012 <- arima(indice,c(0,1,2),include.mean=F)
 
 BICs
 BICs==min(BICs)
 xtable(BICs) #pour obtenir la table Latex
 
-# Le modèle ARMA(0,2) minimise également le critère BIC
+# Le modèle MA(2) minimise également le critère BIC
 
-# A présent, on va donc étudier l'ajustement et la validité du modèle ARMA(0,2) 
+# A présent, on va donc étudier l'ajustement et la validité du modèle MA(2) 
 
 # Fonction de test des significations individuelles des coefficients (cf. TD4)
 signif <- function(estim){
@@ -207,21 +196,21 @@ signif(arima012)
 # Tests d'absence d'autocorrélation des résidus 
 qtest_arima012 <- Qtests(arima012$residuals,24,length(arima012$coef)-1)
 qtest_arima012
-xtable(qtest_arima012)
-# Toutes les p-valeurs sont au dessus du seuil de 5% donc le modèle ARMA(0,2) est valide (résidus non autocorrélés)
+# Toutes les p-valeurs sont au dessus du seuil de 5% donc le modèle MA(2) est valide (résidus non autocorrélés)
 
-# Conclusion : le modèle ARMA(0,2) est bien ajusté et valide
+# Conclusion : le modèle MA(2) est bien ajusté et valide
+
+# On plot l'inverse des racines
+plot(arima012)
+# Toutes les racines du polynôme MA ont un module > 1
+# Le modèle MA(2) est bien inversible donc canonique
 
 # On étudie également la normalité des résidus de notre modèle 
-png('./images/residus_arima012.png', width=800, height=600)
 checkresiduals(arima012)
-dev.off()
 
 # Diagramme Quantile-Quantile
-png('./images/qqplot_residus_arima012.png', width=600, height=450)
 qqnorm(arima012$residuals)
 qqline(arima012$residuals)
-dev.off()
 
 # Test de normalité de Shapiro Wilk (H0 : les résidus sont gaussiens)
 shapiro.test(arima012$residuals)
@@ -229,34 +218,45 @@ shapiro.test(arima012$residuals)
 
 # D'apprès le diagramme Q-Q et le test de Shapiro Wilk, l'hypothèse de normalité des résidus n'est pas vérifiée
 
-# Représentation graphique de la série initiale et sa modélisation
-png('./images/serie_initiale_et_modele012.png', width=600, height=450)
-plot(indice, xlab="Dates", col="grey")
-lines(fitted(arima012), col="red")
-legend("topleft", legend = c(expression(X[t]), "ARIMA(0,1,2)"), col = c("grey", "red"), lty = 1)
-dev.off()
+
 
 ########################
 # Partie 3 : Prévision
 ########################
 
-# On suppose tout de même que nos résidus sont gaussiens
-
-# On estime l'écart-type de nos résidus
-sigma <- sd(arima012$residuals)
-sigma # sigma=8.6
+# Dans cette partie, on suppose que les résidus sont gaussiens
 
 # On prédit les valeurs de la série aux horizons T+1 et T+2 (janvier et février 2024) et les régions de confiance à 95% associées
-forecast <- forecast(arima012, h=2, level=0.95)
+predictions <- predict(arima012, n.ahead=2)
 
-# On représente les prédictions avec leur intervalle de confiance à 95% et la série initiale
-# On limite la série à partir de l'année 2020 pour plus de lisibilité
-png('./images/predictions_arima012.png', width=600, height=450)
-plot(forecast, fcol="red", xlim=c(2020,2024+1/12), main="Prédictions et intervalles de confiance à 95% pour T+1 et T+2")
+# On récupère l'écart-type de nos résidus et le coefficient theta1
+sigma <- sd(arima012$residuals) #sigma=8.6
+theta1 <- arima012$coef[1] #theta1=-0.57
+
+# Calcul des bornes de l'intervalle de confiance à 95% des prédictions
+borne_inf_1 <- predictions$pred[1] - 1.96*sigma
+borne_sup_1 <- predictions$pred[1] + 1.96*sigma
+borne_inf_2 <- predictions$pred[2] - 1.96*sigma*sqrt(1+theta1^2)
+borne_sup_2 <- predictions$pred[2] + 1.96*sigma*sqrt(1+theta1^2)
+
+
+## Tracé de la région de confiance
+Sigma <- matrix(data=c(sigma^2, -theta1*sigma^2, -theta1*sigma^2, sigma^2*(1+theta1^2)), nrow=2, byrow=TRUE) #matrice de variance-covariance
+ell <- ellipse(x=Sigma, centre = c(predictions$pred[1], predictions$pred[2]), t = sqrt(qchisq(0.95, 2)))
+plot(ell, type='l', xlab = expression(X[T+1]), ylab = expression(X[T+2]), lwd=1.5)
+points(x=predictions$pred[1], y=predictions$pred[2], pch=4, lwd=2, col="red") #prédiction
+points(x=as.vector(indice.source)[length(indice.source)-2], y=as.vector(indice.source)[length(indice.source)-1], pch=4, lwd=2, col="blue") #vraie valeur
+lgd_labels <- c("Ellipse de prévision à 95%", "Prédiction", "Vraie valeur")
+legend("topleft", legend=lgd_labels, col=c("black", "red", "blue"), lty=c(1,0,0), pch=c(NA,4,4), lwd=c(1.5,2,2))
+
+## Représentation des prédictions et de leur intervalle de confiance à 95% ainsi que de la série initiale
+forecast <- forecast(arima012, h=2, level=0.95)
+plot(forecast, fcol="red", xlim=c(2020, 2024 + 1/12), main="") #on limite la série à partir de l'année 2020 pour plus de lisibilité
 lines(x=c(2024, 2024+1/12), y=forecast$mean, col="red", lwd=2)
 par(new=T)
-plot(indice.source, xlim=c(2020,2024+1/12), xlab="Dates", ylab=expression(X[t]))
-dev.off()
+plot(indice.source, col="blue", xlim=c(2020,2024+1/12), xlab="Dates", ylab=expression(X[t]))
+legend("bottomleft", legend = c(expression(X[t]), "prédictions"), col = c("blue", "red"), lty=1, pch=c(NA,16), lwd=c(1,2))
 
 # Les points rouges correspondent prédictions et les zones en gris clair représentent les intervalles de confiance à 95%
+
 
